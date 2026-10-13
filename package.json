@@ -1,0 +1,63 @@
+{
+  "name": "@0sfs/fuel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fuel for 0SFS: the Fuel panel and external tanks.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    "./createExternalTankVisuals": {
+      "source": "./src/createExternalTankVisuals.ts",
+      "default": "./src/createExternalTankVisuals.ts"
+    },
+    "./externalFuelTanks": {
+      "source": "./src/externalFuelTanks.ts",
+      "default": "./src/externalFuelTanks.ts"
+    },
+    "./externalTankDefinitions": {
+      "source": "./src/externalTankDefinitions.ts",
+      "default": "./src/externalTankDefinitions.ts"
+    },
+    "./FuelPanel": {
+      "source": "./src/FuelPanel.tsx",
+      "default": "./src/FuelPanel.tsx"
+    },
+    "./fuelTankLayouts": {
+      "source": "./src/fuelTankLayouts.ts",
+      "default": "./src/fuelTankLayouts.ts"
+    },
+    "./fuelTanks": {
+      "source": "./src/fuelTanks.ts",
+      "default": "./src/fuelTanks.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "@0sfs/aircraft": "0.1.0",
+    "@babylonjs/core": "8.56.2",
+    "@babylonjs/loaders": "8.56.2",
+    "foss-earth": "0.1.0",
+    "react": "19.2.6"
+  },
+  "peerDependenciesMeta": {
+    "@0sfs/aircraft": {
+      "optional": true
+    },
+    "@babylonjs/core": {
+      "optional": true
+    },
+    "@babylonjs/loaders": {
+      "optional": true
+    },
+    "foss-earth": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "react-dom": "19.2.6",
+    "vitest": "4.1.6"
+  }
+}
