@@ -165,6 +165,56 @@ describe("Fuel panel", () => {
     expect(onChange).toHaveBeenLastCalledWith(new Map([[0, 6550], [1, 6550], [3, 1000]]));
   });
 
+  it("edits fuel and respawns a tank in the air while rearm is not ground only", async () => {
+    const { host, onChange, onAttachmentChange } = await mount({
+      ...F35B, groundOnly: false, onGround: false,
+      tanks: F35B.tanks.map(tank => tank.index === 3 ? { ...tank, attached: false } : tank),
+    });
+    expect(host.textContent).not.toContain("wait for weight on the wheels");
+    const total = host.querySelector<HTMLInputElement>('input[aria-label="Total fuel"]')!;
+    expect(total.disabled).toBe(false);
+    await slide(total, 2000);
+    expect(onChange).toHaveBeenCalled();
+    const respawn = host.querySelector<HTMLButtonElement>('button[aria-label="Respawn left external tank"]')!;
+    expect(respawn.disabled).toBe(false);
+    await act(async () => respawn.click());
+    expect(onAttachmentChange).toHaveBeenLastCalledWith(3, true);
+  });
+
+  it("holds fuel edits and respawn for the wheels when rearm is ground only, and still jettisons", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    const onChange = vi.fn();
+    const onAttachmentChange = vi.fn();
+    const airborne: FuelPanelState = {
+      ...F35B, groundOnly: true, onGround: false,
+      tanks: F35B.tanks.map(tank => tank.index === 3 ? { ...tank, attached: false } : tank),
+    };
+    await act(async () => root.render(<FuelPanel state={airborne} onChange={onChange} onAttachmentChange={onAttachmentChange} />));
+    expect(host.textContent).toContain("Fuel changes wait for weight on the wheels.");
+    const total = host.querySelector<HTMLInputElement>('input[aria-label="Total fuel"]')!;
+    const right = host.querySelector<HTMLInputElement>('input[aria-label="Right external tank"]')!;
+    expect(total.disabled).toBe(true);
+    expect(right.disabled).toBe(true);
+    await slide(total, 2000);
+    expect(onChange).not.toHaveBeenCalled();
+    const respawn = host.querySelector<HTMLButtonElement>('button[aria-label="Respawn left external tank"]')!;
+    expect(respawn.disabled).toBe(true);
+    expect(respawn.title).toContain("wheels");
+    const jettison = host.querySelector<HTMLButtonElement>('button[aria-label="Jettison right external tank"]')!;
+    expect(jettison.disabled).toBe(false);
+    await act(async () => jettison.click());
+    expect(onAttachmentChange).toHaveBeenLastCalledWith(2, false);
+
+    await act(async () => root.render(<FuelPanel state={{ ...airborne, onGround: true }} onChange={onChange}
+      onAttachmentChange={onAttachmentChange} />));
+    expect(host.textContent).not.toContain("wait for weight on the wheels");
+    expect(total.disabled).toBe(false);
+    expect(respawn.disabled).toBe(false);
+  });
+
   it("rebases an unfinished total drag when attachment state changes elsewhere", async () => {
     const host = document.createElement("div");
     document.body.append(host);

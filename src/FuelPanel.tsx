@@ -9,6 +9,9 @@ export interface FuelPanelState {
   familyId: AircraftFamilyId;
   /** Every tank the flight model has, as it stands. */
   tanks: readonly FuelTankReading[];
+  /** "Rearm on the ground only": fuel edits and respawn then wait for the wheels. Jettison never waits. */
+  groundOnly?: boolean;
+  onGround?: boolean;
 }
 
 export interface FuelPanelProps {
@@ -18,6 +21,8 @@ export interface FuelPanelProps {
   /** Release an external tank and its fuel, or attach an empty replacement. */
   onAttachmentChange?(index: number, attached: boolean): void;
 }
+
+const HELD = "Fuel changes wait for weight on the wheels.";
 
 /** Room around the aircraft, in inches, so no box touches the edge. */
 const MARGIN_IN = 8;
@@ -35,12 +40,14 @@ function describe(contents: number, capacity: number): string {
 }
 
 /** A gauge that is its own slider: drag or click anywhere along it, or use the arrow keys. */
-function FuelGauge({ label, contents, capacity, vertical = false, detached = false, className, style, onChange, onSettled }: {
+function FuelGauge({ label, contents, capacity, vertical = false, detached = false, held = false, className, style, onChange, onSettled }: {
   label: string;
   contents: number;
   capacity: number;
   vertical?: boolean;
   detached?: boolean;
+  /** Shown but not editable: fuel waits for the wheels. */
+  held?: boolean;
   className: string;
   style?: CSSProperties;
   onChange(value: number): void;
@@ -58,10 +65,10 @@ function FuelGauge({ label, contents, capacity, vertical = false, detached = fal
         max={capacity}
         step={1}
         value={contents}
-        disabled={detached}
+        disabled={detached || held}
         aria-label={label}
         aria-valuetext={detached ? "Detached" : describe(contents, capacity)}
-        onChange={event => onChange(Number(event.target.value))}
+        onChange={event => { if (!detached && !held) onChange(Number(event.target.value)); }}
         onPointerUp={onSettled}
         onKeyUp={onSettled}
         onBlur={onSettled}
@@ -75,6 +82,7 @@ function FuelGauge({ label, contents, capacity, vertical = false, detached = fal
  * each tank drawn where the flight model puts it and a gauge of its own.
  */
 export function FuelPanel({ state, onChange, onAttachmentChange }: FuelPanelProps) {
+  const held = state.groundOnly === true && state.onGround !== true;
   // The load the total slider started from, kept until it is let go, so
   // dragging it back returns the pilot's own split exactly.
   const totalBase = useRef<{ tanks: readonly FuelTankReading[]; attachmentKey: string } | null>(null);
@@ -125,9 +133,10 @@ export function FuelPanel({ state, onChange, onAttachmentChange }: FuelPanelProp
     <div className="flight-panel__content flight-fuel">
       <div className="flight-panel__field">
         <span>Total fuel<output>{`${describe(total, capacity)} · ${gallons.toFixed(1)} gal`}</output></span>
-        <FuelGauge className="flight-fuel__total" label="Total fuel" contents={total} capacity={capacity}
+        <FuelGauge className="flight-fuel__total" label="Total fuel" contents={total} capacity={capacity} held={held}
           onChange={setTotal} onSettled={() => { totalBase.current = null; }} />
       </div>
+      {held && <p className="flight-panel__hint">{HELD}</p>}
       {externalTanks.length > 0 && <p className="flight-panel__hint">
         Capacity: internal {pounds(capacity - externalCapacity)} · attached external {pounds(externalCapacity)}.
       </p>}
@@ -144,7 +153,7 @@ export function FuelPanel({ state, onChange, onAttachmentChange }: FuelPanelProp
           const b = boxes[i]!;
           return <FuelGauge key={tank.index} className="flight-fuel__tank" label={`${shape.label} tank`}
             contents={tank.attached === false ? 0 : tank.contentsLbs} capacity={tank.capacityLbs}
-            detached={tank.attached === false} vertical={shape.chordIn > shape.spanIn}
+            detached={tank.attached === false} held={held} vertical={shape.chordIn > shape.spanIn}
             style={{
               left: share(b.left - minY, width), top: share(b.top - minX, height),
               width: share(shape.spanIn, width), height: share(shape.chordIn, height),
@@ -159,6 +168,7 @@ export function FuelPanel({ state, onChange, onAttachmentChange }: FuelPanelProp
             <span>{tank.attached === false ? "Detached" : describe(tank.contentsLbs, tank.capacityLbs)}</span>
             {tank.attached !== undefined && onAttachmentChange && <button type="button" className="flight-panel__command"
               aria-label={`${tank.attached ? "Jettison" : "Respawn"} ${shape.label.toLowerCase()} tank`}
+              disabled={held && !tank.attached} title={held && !tank.attached ? HELD : undefined}
               onClick={() => {
                 totalBase.current = null;
                 onAttachmentChange(tank.index, !tank.attached);

@@ -34,6 +34,7 @@
   },
   "peerDependencies": {
     "@0sfs/aircraft": "0.1.0",
+    "@0sfs/stores": "0.1.0",
     "@babylonjs/core": "8.56.2",
     "@babylonjs/loaders": "8.56.2",
     "foss-earth": "0.1.0",
@@ -41,6 +42,9 @@
   },
   "peerDependenciesMeta": {
     "@0sfs/aircraft": {
+      "optional": true
+    },
+    "@0sfs/stores": {
       "optional": true
     },
     "@babylonjs/core": {

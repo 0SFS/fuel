@@ -1,8 +1,11 @@
 import "@babylonjs/loaders/glTF";
 import {
-  LoadAssetContainerAsync, Matrix, Quaternion, TransformNode, Vector3,
+  LoadAssetContainerAsync, Quaternion, TransformNode, Vector3,
   type AbstractMesh, type AssetContainer, type InstantiatedEntries, type Scene,
 } from "@babylonjs/core";
+import {
+  projectReleasedStore, releaseStore, releasedPastBudget, stepReleasedStore, type ReleasedStore,
+} from "@0sfs/stores/releasedStore";
 import { whenMeshesReady } from "foss-earth/runtime";
 import { F35B_STRUCTURAL_REFERENCE_IN, type ExternalTankDefinition } from "./externalTankDefinitions";
 
@@ -29,31 +32,15 @@ export interface ExternalTankVisualHandle {
   dispose(): void;
 }
 
-interface ReleasedTank {
-  position: Float64Array;
-  velocity: Float64Array;
-  /** Three ECEF basis vectors, preserving release attitude across rebases. */
-  axes: Float64Array;
-  age: number;
-  serial: number;
-}
 interface TankSlot {
   definition: ExternalTankDefinition;
   attached: boolean;
   installation: TransformNode;
   detached: TransformNode;
-  released: ReleasedTank | null;
+  released: ReleasedStore | null;
 }
 
-const GRAVITY_METERS_PER_SECOND_SQUARED = 9.80665;
 const ASSET = "aircraft/f-35b/ExternalTank_FlightGear.glb";
-
-/** Inverse of the floating origin's orthonormal rotation, kept in doubles. */
-function toEcefVector(m: ArrayLike<number>, x: number, y: number, z: number, target: Float64Array, offset = 0): void {
-  target[offset] = m[0] * x + m[1] * y + m[2] * z;
-  target[offset + 1] = m[4] * x + m[5] * y + m[6] * z;
-  target[offset + 2] = m[8] * x + m[9] * y + m[10] * z;
-}
 
 /**
  * 0sfs owns the external aircraft equipment. The retained FlightGear asset is
@@ -95,32 +82,8 @@ export function createExternalTankVisuals(
   };
   const enforceBudget = (): boolean => {
     let changed = false;
-    const released = slots.filter(slot => slot.released !== null).sort((a, b) => b.released!.serial - a.released!.serial);
-    for (const [i, slot] of released.entries()) {
-      if (i >= maximum || slot.released!.age >= lifetime) changed = hideReleased(slot) || changed;
-    }
+    for (const slot of releasedPastBudget(slots, maximum, lifetime)) changed = hideReleased(slot) || changed;
     return changed;
-  };
-  const matrix = Matrix.Identity();
-  const projectReleased = (slot: TankSlot, m: ArrayLike<number>): boolean => {
-    const released = slot.released!;
-    const p = released.position;
-    const x = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12];
-    const y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
-    const z = m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14];
-    const changed = slot.detached.position.x !== x || slot.detached.position.y !== y || slot.detached.position.z !== z;
-    slot.detached.position.set(x, y, z);
-    const a = released.axes;
-    Matrix.FromValuesToRef(
-      m[0] * a[0] + m[4] * a[1] + m[8] * a[2], m[1] * a[0] + m[5] * a[1] + m[9] * a[2], m[2] * a[0] + m[6] * a[1] + m[10] * a[2], 0,
-      m[0] * a[3] + m[4] * a[4] + m[8] * a[5], m[1] * a[3] + m[5] * a[4] + m[9] * a[5], m[2] * a[3] + m[6] * a[4] + m[10] * a[5], 0,
-      m[0] * a[6] + m[4] * a[7] + m[8] * a[8], m[1] * a[6] + m[5] * a[7] + m[9] * a[8], m[2] * a[6] + m[6] * a[7] + m[10] * a[8], 0,
-      0, 0, 0, 1, matrix,
-    );
-    const q = slot.detached.rotationQuaternion!;
-    const previousX = q.x, previousY = q.y, previousZ = q.z, previousW = q.w;
-    Quaternion.FromRotationMatrixToRef(matrix, q);
-    return changed || q.x !== previousX || q.y !== previousY || q.z !== previousZ || q.w !== previousW;
   };
   const releaseResources = (): void => {
     for (const entry of entries.splice(0)) entry.dispose();
@@ -184,14 +147,12 @@ export function createExternalTankVisuals(
       if (!slot?.attached) return;
       const wasVisible = slot.installation.isEnabled();
       const frame = options.getWorldFromEcef();
-      if (ready && maximum > 0 && lifetime > 0 && frame && [worldVelocity.x, worldVelocity.y, worldVelocity.z].every(Number.isFinite)) {
-        const m = frame.m, world = slot.installation.computeWorldMatrix(true).m;
-        const position = new Float64Array(3), velocity = new Float64Array(3), axes = new Float64Array(9);
-        toEcefVector(m, world[12] - m[12], world[13] - m[13], world[14] - m[14], position);
-        toEcefVector(m, worldVelocity.x, worldVelocity.y, worldVelocity.z, velocity);
-        for (let axis = 0; axis < 3; axis++) toEcefVector(m, world[axis * 4], world[axis * 4 + 1], world[axis * 4 + 2], axes, axis * 3);
-        slot.released = { position, velocity, axes, age: 0, serial: ++serial };
-        projectReleased(slot, m);
+      const released = ready && maximum > 0 && lifetime > 0 && frame
+        ? releaseStore(slot.installation, worldVelocity, frame.m, serial + 1) : null;
+      if (released && frame) {
+        serial = released.serial;
+        slot.released = released;
+        projectReleasedStore(released, frame.m, slot.detached);
         slot.detached.setEnabled(true);
       }
       slot.attached = false;
@@ -208,18 +169,10 @@ export function createExternalTankVisuals(
       for (const slot of slots) {
         const release = slot.released;
         if (!release) continue;
-        if (dt > 0) {
-          release.age += dt;
-          if (release.age >= lifetime) { changed = hideReleased(slot) || changed; continue; }
-          // Earth-fixed radial gravity. No visual time advances during pause.
-          const radius = Math.hypot(...release.position);
-          if (radius > 0) for (let axis = 0; axis < 3; axis++) {
-            const acceleration = -GRAVITY_METERS_PER_SECOND_SQUARED * release.position[axis] / radius;
-            release.position[axis] += release.velocity[axis] * dt + 0.5 * acceleration * dt * dt;
-            release.velocity[axis] += acceleration * dt;
-          }
-        }
-        changed = projectReleased(slot, frame.m) || changed;
+        // No visual time advances during pause; zero time only rebases.
+        stepReleasedStore(release, dt);
+        if (release.age >= lifetime) { changed = hideReleased(slot) || changed; continue; }
+        changed = projectReleasedStore(release, frame.m, slot.detached) || changed;
       }
       if (changed) requestRender();
     },
