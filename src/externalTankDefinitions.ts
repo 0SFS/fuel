@@ -13,15 +13,13 @@ export interface ExternalTankDefinition {
   locationIn: { x: number; y: number; z: number };
 }
 
-// Experimental stores: source fuel capacity, provisional dry mass and mounting.
-// Keep these physical definitions consistent with the runtime F-35B XML.
-const F35B_TANKS: readonly ExternalTankDefinition[] = [
-  { index: 2, label: "Right external", attachmentProperty: "stores/external-tank[0]/attached",
-    capacityLbs: 2991, dryWeightLbs: 300, locationIn: { x: 368.52, y: 127.952756, z: -15.36 } },
-  { index: 3, label: "Left external", attachmentProperty: "stores/external-tank[1]/attached",
-    capacityLbs: 2991, dryWeightLbs: 300, locationIn: { x: 368.52, y: -127.952756, z: -15.36 } },
-];
+const tanksByAircraft = new Map<string, readonly ExternalTankDefinition[]>();
+
+/** The aircraft mod says where a payload tank is mounted. The tank mod supplies capacity and dry mass. */
+export function registerExternalTanks(aircraftId: string, tanks: readonly ExternalTankDefinition[]): void {
+  tanksByAircraft.set(aircraftId, tanks);
+}
 
 export function getExternalTankDefinitions(aircraftId: AircraftId): readonly ExternalTankDefinition[] {
-  return aircraftId === "f-35b" ? F35B_TANKS : [];
+  return tanksByAircraft.get(aircraftId) ?? [];
 }
