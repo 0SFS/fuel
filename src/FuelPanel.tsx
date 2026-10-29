@@ -1,12 +1,11 @@
 import "./fuelPanel.css";
 
 import { useRef, type CSSProperties } from "react";
-import type { AircraftFamilyId } from "@0sfs/aircraft/aircraftIds";
 import { fuelTankShape, getAircraftFuelLayout, type FuelTankShape } from "./fuelTankLayouts";
 import { distributeFuel, type FuelTankReading } from "./fuelTanks";
 
 export interface FuelPanelState {
-  familyId: AircraftFamilyId;
+  familyId: string;
   /** Every tank the flight model has, as it stands. */
   tanks: readonly FuelTankReading[];
   /** "Rearm on the ground only": fuel edits and respawn then wait for the wheels. Jettison never waits. */

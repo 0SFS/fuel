@@ -52,13 +52,22 @@ const FUEL_TANK_SHAPES: Record<AircraftFamilyId, Pick<AircraftFuelLayout, "tanks
   },
 };
 
-export function getAircraftFuelLayout(familyId: AircraftFamilyId): AircraftFuelLayout {
-  const view = AIRCRAFT_TOP_VIEWS[familyId];
+export function getAircraftFuelLayout(familyId: string): AircraftFuelLayout {
+  const view = AIRCRAFT_TOP_VIEWS[familyId as AircraftFamilyId];
+  const tanks = FUEL_TANK_SHAPES[familyId as AircraftFamilyId];
+  if (!view || !tanks) {
+    return {
+      outlines: [],
+      bounds: { minX: 0, maxX: 1, minY: 0, maxY: 1 },
+      tanks: [],
+      note: "This aircraft has no fuel tanks.",
+    };
+  }
   return {
     outlines: view.outlines,
     bounds: view.bounds,
     credit: "credit" in view ? view.credit : undefined,
-    ...FUEL_TANK_SHAPES[familyId],
+    ...tanks,
   };
 }
 
